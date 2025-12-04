@@ -1,0 +1,27 @@
+# Version LÉGÈRE sans ML local (~100MB au lieu de 5GB)
+# Pour utiliser uniquement les API externes
+
+Django>=4.2
+djangorestframework>=3.14.0
+django-filter>=23.5
+psycopg2-binary>=2.9.9
+celery[redis]>=5.3.4
+redis>=5.0.1
+python-dotenv>=1.0.0
+django-cors-headers>=4.3.1
+
+# Mistral AI SDK (léger)
+mistralai>=1.0.0
+
+# Audio processing (léger)
+ffmpeg-python>=0.2.0
+pydub>=0.25.1
+
+# Utilities
+requests>=2.31.0
+python-magic>=0.4.27
+gunicorn>=21.2.0
+
+# Note: Whisper et Torch sont exclus pour économiser l'espace disque
+# La transcription utilisera une API externe (Whisper API, AssemblyAI, etc.)
+
