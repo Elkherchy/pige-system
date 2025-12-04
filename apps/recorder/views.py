@@ -24,7 +24,7 @@ class RecordingJobViewSet(viewsets.ReadOnlyModelViewSet):
     ViewSet pour consulter les jobs d'enregistrement
     """
     queryset = RecordingJob.objects.all()
-    permission_classes = [IsAuthenticated]
+    permission_classes = []  # Pas d'authentification requise
     
     @action(detail=False, methods=['post'])
     def start(self, request):

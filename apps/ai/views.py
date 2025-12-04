@@ -16,7 +16,6 @@ from apps.archive.models import Recording
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
 def transcribe(request):
     """
     Transcrit un enregistrement
@@ -61,7 +60,6 @@ def transcribe(request):
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
 def summarize(request):
     """
     Génère un résumé d'un enregistrement
@@ -112,7 +110,6 @@ def summarize(request):
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
 def extract_keywords_view(request):
     """
     Extrait les mots-clés d'un enregistrement
@@ -164,7 +161,6 @@ def extract_keywords_view(request):
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
 def models_info(request):
     """
     Retourne les informations sur les modèles IA configurés

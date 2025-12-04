@@ -22,7 +22,7 @@ class UserViewSet(viewsets.ModelViewSet):
     """
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = []  # Pas d'authentification requise
     
     def get_serializer_class(self):
         if self.action == 'create':

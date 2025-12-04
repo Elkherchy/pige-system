@@ -24,7 +24,7 @@ class RecordingViewSet(viewsets.ModelViewSet):
     ViewSet pour la gestion des enregistrements
     """
     queryset = Recording.objects.all().select_related('owner').prefetch_related('blank_alerts')
-    permission_classes = [IsAuthenticated]
+    permission_classes = []  # Pas d'authentification requise
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['status', 'format', 'flagged_blank', 'owner']
     search_fields = ['title', 'filename', 'transcript', 'summary', 'notes']
@@ -111,7 +111,7 @@ class BlankAlertViewSet(viewsets.ReadOnlyModelViewSet):
     """
     queryset = BlankAlert.objects.all().select_related('recording')
     serializer_class = BlankAlertSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = []  # Pas d'authentification requise
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['recording', 'severity', 'is_natural', 'notified']
     ordering_fields = ['created_at', 'duration', 'severity']
