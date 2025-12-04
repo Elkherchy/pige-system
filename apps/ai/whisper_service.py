@@ -1,13 +1,21 @@
 """
 Service de transcription audio avec Whisper
+Supporte à la fois l'installation locale et les API externes
 """
-import whisper
-import torch
 from django.conf import settings
 import logging
 import os
 
 logger = logging.getLogger(__name__)
+
+# Import optionnel de Whisper (si installé localement)
+try:
+    import whisper
+    import torch
+    WHISPER_AVAILABLE = True
+except ImportError:
+    WHISPER_AVAILABLE = False
+    logger.warning("Whisper non installé localement, utilisation d'API externe recommandée")
 
 # Initialisation du modèle Whisper (lazy loading)
 _whisper_model = None
@@ -15,9 +23,12 @@ _whisper_model = None
 
 def get_whisper_model():
     """
-    Charge le modèle Whisper (singleton)
+    Charge le modèle Whisper (singleton) - uniquement si installé localement
     """
     global _whisper_model
+    
+    if not WHISPER_AVAILABLE:
+        raise ImportError("Whisper n'est pas installé. Installez avec: pip install openai-whisper torch")
     
     if _whisper_model is None:
         model_name = getattr(settings, 'WHISPER_MODEL', 'base')
@@ -53,6 +64,10 @@ def transcribe_file(filepath, language='fr'):
         logger.error(f"Fichier introuvable: {filepath}")
         return ""
     
+    if not WHISPER_AVAILABLE:
+        logger.warning("Whisper non disponible - transcription désactivée")
+        return "[Transcription désactivée - Whisper non installé. Installez avec: pip install openai-whisper torch]"
+    
     try:
         model = get_whisper_model()
         
@@ -62,7 +77,7 @@ def transcribe_file(filepath, language='fr'):
         result = model.transcribe(
             filepath,
             language=language,
-            fp16=torch.cuda.is_available(),  # FP16 si GPU disponible
+            fp16=torch.cuda.is_available() if WHISPER_AVAILABLE else False,
             verbose=False
         )
         
@@ -135,10 +150,17 @@ def get_model_info():
     """
     Retourne les informations sur le modèle Whisper chargé
     """
+    if not WHISPER_AVAILABLE:
+        return {
+            'available': False,
+            'message': 'Whisper non installé. Installez avec: pip install openai-whisper torch'
+        }
+    
     model_name = getattr(settings, 'WHISPER_MODEL', 'base')
     device = getattr(settings, 'WHISPER_DEVICE', 'cpu')
     
     return {
+        'available': True,
         'model': model_name,
         'device': device,
         'loaded': _whisper_model is not None
