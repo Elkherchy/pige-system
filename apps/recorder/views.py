@@ -77,6 +77,8 @@ class RecordingJobViewSet(viewsets.ReadOnlyModelViewSet):
         out_path = os.path.join(storage_path, filename)
         
         # Créer le Recording dans la DB
+        # Owner = None si pas authentifié, sinon request.user
+        owner = request.user if request.user.is_authenticated else None
         recording = Recording.objects.create(
             title=title,
             filename=filename,
@@ -84,7 +86,7 @@ class RecordingJobViewSet(viewsets.ReadOnlyModelViewSet):
             format=fmt,
             bitrate=quality,
             status='recording',
-            owner=request.user
+            owner=owner
         )
         
         # Créer le job
