@@ -73,7 +73,6 @@ curl -X POST $API_URL/api/recordings/check-stream/ \
   "error": null
 }
 ```
-
 ### Démarrer un enregistrement
 ```bash
 curl -X POST $API_URL/api/recordings/jobs/start/ \
