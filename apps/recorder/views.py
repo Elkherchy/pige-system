@@ -14,7 +14,8 @@ from .services import (
     build_filename,
     start_record,
     stop_record,
-    check_stream_health
+    check_stream_health,
+    is_process_running
 )
 from apps.archive.models import Recording
 
@@ -205,21 +206,82 @@ class RecordingJobViewSet(viewsets.ReadOnlyModelViewSet):
     
     @action(detail=False, methods=['get'])
     def active(self, request):
-        """Liste les enregistrements actifs"""
-        active_jobs = RecordingJob.objects.filter(status='running')
-        return Response({
-            'count': active_jobs.count(),
-            'jobs': [
-                {
+        """
+        Liste les enregistrements actifs et met à jour leur statut
+        """
+        # Récupérer tous les jobs marqués comme "running"
+        running_jobs = RecordingJob.objects.filter(status='running')
+        
+        # Vérifier l'état réel de chaque processus
+        truly_active_jobs = []
+        for job in running_jobs:
+            if job.process_id and is_process_running(job.process_id):
+                # Le processus est vraiment actif
+                truly_active_jobs.append({
                     'id': job.id,
                     'source': job.source_url,
                     'output': job.output_path,
                     'format': job.format,
                     'started_at': job.started_at,
                     'process_id': job.process_id
-                }
-                for job in active_jobs
-            ]
+                })
+            else:
+                # Le processus n'est plus actif, mettre à jour le statut
+                job.status = 'completed'
+                job.completed_at = datetime.now()
+                job.save()
+                
+                # Mettre à jour le recording associé si possible
+                try:
+                    recording = Recording.objects.get(filepath=job.output_path)
+                    if recording.status == 'recording':
+                        recording.status = 'processing'
+                        recording.save()
+                        
+                        # Lancer le traitement automatique
+                        from apps.archive.tasks import process_recording
+                        process_recording.delay(recording.id)
+                except Recording.DoesNotExist:
+                    pass
+        
+        return Response({
+            'count': len(truly_active_jobs),
+            'jobs': truly_active_jobs
+        })
+    
+    @action(detail=False, methods=['post'])
+    def cleanup(self, request):
+        """
+        Nettoie et met à jour le statut de tous les jobs obsolètes
+        """
+        running_jobs = RecordingJob.objects.filter(status='running')
+        updated_count = 0
+        
+        for job in running_jobs:
+            if not job.process_id or not is_process_running(job.process_id):
+                # Le processus n'existe plus ou n'est plus actif
+                job.status = 'completed'
+                job.completed_at = datetime.now()
+                job.save()
+                updated_count += 1
+                
+                # Mettre à jour le recording associé
+                try:
+                    recording = Recording.objects.get(filepath=job.output_path)
+                    if recording.status == 'recording':
+                        recording.status = 'processing'
+                        recording.save()
+                        
+                        # Lancer le traitement automatique
+                        from apps.archive.tasks import process_recording
+                        process_recording.delay(recording.id)
+                except Recording.DoesNotExist:
+                    pass
+        
+        return Response({
+            'success': True,
+            'updated_count': updated_count,
+            'message': f'{updated_count} job(s) mis à jour'
         })
 
 

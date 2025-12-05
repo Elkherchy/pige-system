@@ -114,6 +114,33 @@ def start_record(stream_url, out_path, fmt='wav', quality='192k', duration=None)
         raise
 
 
+def is_process_running(process_id):
+    """
+    Vérifie si un processus est en cours d'exécution
+    
+    Args:
+        process_id: PID du processus
+    
+    Returns:
+        bool: True si le processus est actif, False sinon
+    """
+    if not process_id:
+        return False
+    
+    try:
+        # Envoyer le signal 0 ne fait rien mais permet de vérifier l'existence
+        os.kill(process_id, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # Le processus existe mais on n'a pas les permissions
+        return True
+    except Exception as e:
+        logger.error(f"Erreur lors de la vérification du processus {process_id}: {str(e)}")
+        return False
+
+
 def stop_record(process_id):
     """
     Arrête un processus d'enregistrement
