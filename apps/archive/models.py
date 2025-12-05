@@ -36,29 +36,6 @@ class Recording(models.Model):
         verbose_name='Chemin du fichier'
     )
     
-    # MongoDB Storage
-    mongo_file_id = models.CharField(
-        max_length=255,
-        blank=True,
-        null=True,
-        verbose_name='ID fichier MongoDB',
-        help_text='ID du fichier dans MongoDB GridFS'
-    )
-    mongo_url = models.CharField(
-        max_length=1024,
-        blank=True,
-        null=True,
-        verbose_name='URL MongoDB',
-        help_text='URL pour télécharger depuis MongoDB'
-    )
-    local_url = models.CharField(
-        max_length=1024,
-        blank=True,
-        null=True,
-        verbose_name='URL locale',
-        help_text='URL pour télécharger depuis le stockage local'
-    )
-    
     # Métadonnées audio
     duration = models.FloatField(
         null=True,
