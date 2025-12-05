@@ -106,6 +106,7 @@ class RecordingJobViewSet(viewsets.ReadOnlyModelViewSet):
             
             job.process_id = proc.pid
             job.status = 'running'
+            job.started_at = datetime.now()
             job.save()
             
             # Programmer le traitement automatique si durée définie
