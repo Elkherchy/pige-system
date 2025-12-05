@@ -5,9 +5,12 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser
 from django.conf import settings
+from django.http import HttpResponse
 from datetime import datetime
 import os
+import logging
 
 from .models import RecordingJob
 from .services import (
@@ -17,9 +20,12 @@ from .services import (
     check_stream_health
 )
 from apps.archive.models import Recording
+from apps.archive.mongodb_service import get_mongodb_service
+
+logger = logging.getLogger(__name__)
 
 
-class RecordingJobViewSet(viewsets.ReadOnlyModelViewSet):
+class RecordingJobViewSet(viewsets.ModelViewSet):
     """
     ViewSet pour consulter les jobs d'enregistrement
     """
@@ -137,24 +143,15 @@ class RecordingJobViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
-    @action(detail=False, methods=['post'])
-    def stop(self, request):
+    @action(detail=True, methods=['post'])
+    def stop(self, request, pk=None):
         """
         Arrête un enregistrement en cours
         
-        Body params:
-        - job_id: ID du job à arrêter
+        URL: POST /api/recordings/jobs/{jobId}/stop/
         """
-        job_id = request.data.get('job_id')
-        
-        if not job_id:
-            return Response(
-                {'error': 'Le paramètre "job_id" est requis'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
         try:
-            job = RecordingJob.objects.get(pk=job_id)
+            job = self.get_object()
             
             if job.status != 'running':
                 return Response(
@@ -173,6 +170,7 @@ class RecordingJobViewSet(viewsets.ReadOnlyModelViewSet):
             
             if success:
                 job.status = 'stopped'
+                job.completed_at = datetime.now()
                 job.save()
                 
                 # Marquer le recording comme terminé et lancer le traitement
@@ -196,12 +194,6 @@ class RecordingJobViewSet(viewsets.ReadOnlyModelViewSet):
                     {'error': 'Impossible d\'arrêter le processus'},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
-                
-        except RecordingJob.DoesNotExist:
-            return Response(
-                {'error': 'Job introuvable'},
-                status=status.HTTP_404_NOT_FOUND
-            )
     
     @action(detail=False, methods=['get'])
     def active(self, request):
@@ -246,4 +238,164 @@ def check_stream(request):
         'available': health['available'],
         'error': health['error'] if not health['available'] else None
     })
+
+
+@api_view(['POST'])
+def upload_audio(request):
+    """
+    Upload un fichier audio et le stocke dans MongoDB
+    
+    Body params (multipart/form-data):
+    - audio_file: Fichier audio à uploader
+    - title: Titre de l'enregistrement
+    - format: Format audio (optionnel, détecté automatiquement)
+    - duration: Durée en secondes (optionnel)
+    """
+    try:
+        # Vérifier que le fichier est présent
+        if 'audio_file' not in request.FILES:
+            return Response(
+                {'error': 'Le fichier audio_file est requis'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        audio_file = request.FILES['audio_file']
+        title = request.data.get('title', audio_file.name)
+        fmt = request.data.get('format', '')
+        duration = request.data.get('duration')
+        
+        # Détecter le format depuis l'extension si non fourni
+        if not fmt:
+            _, ext = os.path.splitext(audio_file.name)
+            fmt = ext.lstrip('.') or 'unknown'
+        
+        # Créer un chemin temporaire pour le fichier
+        temp_filename = f"temp_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{audio_file.name}"
+        temp_path = os.path.join(settings.MEDIA_ROOT, 'temp', temp_filename)
+        os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+        
+        # Sauvegarder temporairement le fichier
+        with open(temp_path, 'wb+') as destination:
+            for chunk in audio_file.chunks():
+                destination.write(chunk)
+        
+        # Obtenir la taille du fichier
+        file_size = os.path.getsize(temp_path)
+        
+        # Créer l'enregistrement dans la DB
+        owner = request.user if request.user.is_authenticated else None
+        recording = Recording.objects.create(
+            title=title,
+            filename=audio_file.name,
+            filepath=temp_path,
+            format=fmt,
+            status='processing',
+            file_size=file_size,
+            owner=owner
+        )
+        
+        # Upload vers MongoDB
+        mongo_service = get_mongodb_service()
+        
+        # Préparer les métadonnées
+        metadata = {
+            'title': title,
+            'format': fmt,
+            'recording_id': recording.id,
+            'uploaded_by': owner.username if owner else 'anonymous',
+        }
+        
+        if duration:
+            try:
+                metadata['duration'] = float(duration)
+                recording.duration = float(duration)
+            except (ValueError, TypeError):
+                pass
+        
+        # Upload le fichier vers MongoDB
+        mongo_result = mongo_service.upload_file(
+            file_path=temp_path,
+            filename=audio_file.name,
+            metadata=metadata
+        )
+        
+        # Mettre à jour l'enregistrement avec les infos MongoDB
+        recording.mongo_file_id = mongo_result['file_id']
+        recording.mongo_url = mongo_result['url']
+        recording.local_url = f"/api/recordings/{recording.id}/download/"
+        recording.save()
+        
+        # Nettoyer le fichier temporaire (optionnel, on peut le garder comme backup)
+        # os.remove(temp_path)
+        
+        # Programmer le traitement automatique
+        from apps.archive.tasks import process_recording
+        process_recording.delay(recording.id)
+        
+        logger.info(f"✓ Fichier uploadé avec succès: {audio_file.name} (Recording ID: {recording.id})")
+        
+        # Réponse conforme au format attendu par le frontend
+        return Response({
+            'success': True,
+            'recording_id': recording.id,
+            'mongo_file_id': mongo_result['file_id'],
+            'mongo_url': mongo_result['url'],
+            'local_url': recording.local_url,
+            'filename': audio_file.name,
+            'message': 'Fichier uploadé avec succès',
+        }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        logger.error(f"✗ Erreur lors de l'upload: {str(e)}")
+        
+        # Nettoyer en cas d'erreur
+        if 'temp_path' in locals() and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except:
+                pass
+        
+        return Response(
+            {'error': f'Erreur lors de l\'upload: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+def download_from_mongodb(request, file_id):
+    """
+    Télécharge un fichier depuis MongoDB GridFS
+    
+    URL params:
+    - file_id: ID du fichier dans MongoDB
+    """
+    try:
+        mongo_service = get_mongodb_service()
+        
+        # Vérifier que le fichier existe
+        if not mongo_service.file_exists(file_id):
+            return Response(
+                {'error': 'Fichier introuvable dans MongoDB'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Récupérer les métadonnées
+        metadata = mongo_service.get_file_metadata(file_id)
+        
+        # Télécharger le fichier
+        file_data = mongo_service.download_file(file_id)
+        
+        # Créer la réponse HTTP
+        response = HttpResponse(file_data, content_type=metadata.get('content_type', 'application/octet-stream'))
+        response['Content-Disposition'] = f'attachment; filename="{metadata.get("filename", "audio.mp3")}"'
+        response['Content-Length'] = len(file_data)
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"✗ Erreur lors du téléchargement depuis MongoDB: {str(e)}")
+        return Response(
+            {'error': f'Erreur lors du téléchargement: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 

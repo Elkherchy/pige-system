@@ -209,6 +209,17 @@ LOGGING = {
 # Custom User Model
 AUTH_USER_MODEL = 'accounts.User'
 
+# MongoDB Configuration
+MONGODB_HOST = os.getenv('MONGODB_HOST', 'mongodb')
+MONGODB_PORT = int(os.getenv('MONGODB_PORT', '27017'))
+MONGODB_USER = os.getenv('MONGO_USER', 'pige')
+MONGODB_PASSWORD = os.getenv('MONGO_PASSWORD', 'pige')
+MONGODB_DATABASE = os.getenv('MONGO_DB', 'pige_audio')
+MONGODB_AUTH_SOURCE = os.getenv('MONGO_AUTH_SOURCE', 'admin')
+
+# Construire l'URI MongoDB
+MONGODB_URI = f"mongodb://{MONGODB_USER}:{MONGODB_PASSWORD}@{MONGODB_HOST}:{MONGODB_PORT}/{MONGODB_DATABASE}?authSource={MONGODB_AUTH_SOURCE}"
+
 # Create logs directory
 os.makedirs(BASE_DIR / 'logs', exist_ok=True)
 os.makedirs(MEDIA_ROOT, exist_ok=True)
