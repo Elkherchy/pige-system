@@ -14,7 +14,12 @@ SECRET_KEY = os.getenv('DJ_SECRET', 'dev-secret-change-in-production')
 DEBUG = os.getenv('DJ_DEBUG', '1') == '1'
 # En développement, accepter toutes les IPs
 # En production, mettre les IPs/domaines spécifiques dans .env
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '*').split(',') if os.getenv('ALLOWED_HOSTS') else ['*']
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '*').split(',') if os.getenv('ALLOWED_HOSTS') else [
+    '*',
+    'localhost',
+    '127.0.0.1',
+    'pige.siraj-ai.com',
+]
 
 # Applications
 INSTALLED_APPS = [
